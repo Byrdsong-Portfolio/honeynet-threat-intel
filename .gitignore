@@ -1,0 +1,42 @@
+# ── Honeynet: files that must never be committed ─────────────────────────────
+
+# Captured log data (can contain real attacker IPs/credentials)
+logs/
+*.jsonl
+
+# SQLite databases
+*.db
+
+# Fake bait data generated at runtime
+fake_data/employees.csv
+fake_data/credentials.txt
+fake_data/dump.sql
+
+# Environment / secrets
+db_config.env
+.env
+*.env
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Editor artifacts
+.vscode/
+.idea/
+*.swp
+*.swo
