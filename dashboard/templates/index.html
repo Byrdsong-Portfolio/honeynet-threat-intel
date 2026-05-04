@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Honeynet Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d1117;
+  color: #c9d1d9;
+  min-height: 100vh;
+}
+header {
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+  padding: 16px 32px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+header h1 { font-size: 20px; font-weight: 600; color: #f0f6fc; }
+.badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+.badge-live { background: #238636; color: #fff; }
+
+.grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  padding: 24px 32px 0;
+}
+.card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 20px;
+}
+.stat-label { font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: .5px; }
+.stat-value { font-size: 32px; font-weight: 700; color: #f0f6fc; margin-top: 4px; }
+.stat-sub   { font-size: 12px; color: #8b949e; margin-top: 4px; }
+
+.grid-main {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+  padding: 16px 32px;
+}
+.chart-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 20px;
+}
+.chart-card h2 { font-size: 14px; font-weight: 600; color: #f0f6fc; margin-bottom: 16px; }
+canvas { max-height: 260px; }
+
+.grid-tables {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  padding: 0 32px 16px;
+}
+.table-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 20px;
+}
+.table-card h2 { font-size: 14px; font-weight: 600; color: #f0f6fc; margin-bottom: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; color: #8b949e; font-weight: 500; padding: 4px 0 8px; border-bottom: 1px solid #30363d; }
+td { padding: 6px 0; border-bottom: 1px solid #21262d; word-break: break-all; }
+td:last-child { text-align: right; color: #58a6ff; font-weight: 600; white-space: nowrap; }
+
+.live-section { padding: 0 32px 32px; }
+.live-section h2 { font-size: 14px; font-weight: 600; color: #f0f6fc; margin-bottom: 12px; }
+#live-feed {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  overflow: hidden;
+}
+#live-feed table { width: 100%; border-collapse: collapse; font-size: 12px; }
+#live-feed th { padding: 8px 12px; background: #21262d; color: #8b949e; font-weight: 500; text-align: left; }
+#live-feed td { padding: 7px 12px; border-bottom: 1px solid #21262d; font-family: monospace; }
+.svc-ssh   { color: #ff7b72; }
+.svc-http  { color: #ffa657; }
+.svc-mysql { color: #79c0ff; }
+
+@media (max-width: 1100px) {
+  .grid-4 { grid-template-columns: repeat(2, 1fr); }
+  .grid-main { grid-template-columns: 1fr; }
+  .grid-tables { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🕸 Honeynet Dashboard</h1>
+  <span class="badge badge-live" id="live-status">● LIVE</span>
+</header>
+
+<!-- Summary stats -->
+<div class="grid-4" id="stats-row">
+  <div class="card"><div class="stat-label">Total Events</div><div class="stat-value" id="s-total">—</div><div class="stat-sub">all time</div></div>
+  <div class="card"><div class="stat-label">Last 24h</div><div class="stat-value" id="s-24h">—</div><div class="stat-sub">across all services</div></div>
+  <div class="card"><div class="stat-label">SSH Hits (24h)</div><div class="stat-value svc-ssh" id="s-ssh">—</div></div>
+  <div class="card"><div class="stat-label">HTTP Hits (24h)</div><div class="stat-value svc-http" id="s-http">—</div><div class="stat-sub" id="s-mysql-label">MySQL: — hits</div></div>
+</div>
+
+<!-- Timeline chart + country table -->
+<div class="grid-main">
+  <div class="chart-card">
+    <h2>Attack Volume — Last 24 Hours</h2>
+    <canvas id="timeline-chart"></canvas>
+  </div>
+  <div class="table-card">
+    <h2>Top Source Countries</h2>
+    <table>
+      <thead><tr><th>Country</th><th>Hits</th></tr></thead>
+      <tbody id="tbl-countries"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Top tables -->
+<div class="grid-tables">
+  <div class="table-card">
+    <h2>Top Attacking IPs</h2>
+    <table>
+      <thead><tr><th>IP Address</th><th>Hits</th></tr></thead>
+      <tbody id="tbl-ips"></tbody>
+    </table>
+  </div>
+  <div class="table-card">
+    <h2>Top Usernames (SSH)</h2>
+    <table>
+      <thead><tr><th>Username</th><th>Attempts</th></tr></thead>
+      <tbody id="tbl-usernames"></tbody>
+    </table>
+  </div>
+  <div class="table-card">
+    <h2>Top HTTP Paths</h2>
+    <table>
+      <thead><tr><th>Path</th><th>Hits</th></tr></thead>
+      <tbody id="tbl-paths"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Live event feed -->
+<div class="live-section">
+  <h2>Live Event Feed <small style="color:#8b949e;font-weight:400">(last 50)</small></h2>
+  <div id="live-feed">
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Service</th>
+          <th>IP</th>
+          <th>Country</th>
+          <th>Detail</th>
+        </tr>
+      </thead>
+      <tbody id="feed-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<script src="/static/charts.js"></script>
+</body>
+</html>
