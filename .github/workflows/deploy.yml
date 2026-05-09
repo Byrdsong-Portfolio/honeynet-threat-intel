@@ -1,0 +1,34 @@
+name: Deploy to DigitalOcean
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to droplet via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: ${{ secrets.DO_USER }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          script: |
+            set -e
+
+            cd /opt/honeynet
+
+            # Pull latest code
+            git fetch origin main
+            git reset --hard origin/main
+
+            # Install/update Python dependencies
+            /opt/honeynet/.venv/bin/pip install -q -r requirements.txt
+
+            # Reload systemd config if the unit file changed, then restart
+            sudo cp deploy/honeynet.service /etc/systemd/system/honeynet.service
+            sudo systemctl daemon-reload
+            sudo systemctl restart honeynet
+            sudo systemctl is-active --quiet honeynet && echo "honeynet is running"

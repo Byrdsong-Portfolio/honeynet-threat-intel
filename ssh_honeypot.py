@@ -21,12 +21,15 @@ import uuid
 from pathlib import Path
 
 import paramiko
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ── project imports ───────────────────────────────────────────────────────────
 sys.path.insert(0, str(Path(__file__).parent))
 from utils.logger import log_event
 from utils.geoip import resolve
-from utils.alerting import notify
+from utils.alerting import notify, validate_webhook
 
 # ── Paramiko logging ──────────────────────────────────────────────────────────
 logging.getLogger("paramiko").setLevel(logging.WARNING)
@@ -75,23 +78,13 @@ class HoneypotInterface(paramiko.ServerInterface):
         self.password    = ""
         self.event       = threading.Event()
 
-    # Always allow password auth — log the attempt
+    # Always allow password auth — capture credentials; log/alert after
+    # transport.start_server() returns so client_version is populated.
     def check_auth_password(self, username: str, password: str) -> int:
         self.username = username
         self.password = password
-        geo = resolve(self.client_ip)
-        ev = {
-            "source_ip":      self.client_ip,
-            "source_port":    self.client_port,
-            "geo":            geo,
-            "username":       username,
-            "password":       password,
-            "client_version": getattr(self, "_client_version", "unknown"),
-            "session_id":     self.session_id,
-        }
-        log_event("ssh", ev)
-        notify("ssh", ev)
-        print(f"[ssh] {self.client_ip} → user={username!r} pass={password!r} [{geo.get('country','??')}]")
+        self.geo = resolve(self.client_ip)
+        print(f"[ssh] {self.client_ip} → user={username!r} pass={password!r} [{self.geo.get('country','??')}]")
         return paramiko.AUTH_SUCCESSFUL
 
     def check_auth_publickey(self, username, key):
@@ -188,6 +181,20 @@ def _handle_client(conn: socket.socket, addr: tuple) -> None:
 
         iface._client_version = transport.remote_version or "unknown"
 
+        # Log and alert here so client_version is the real value, not "unknown".
+        if iface.username:
+            ev = {
+                "source_ip":      iface.client_ip,
+                "source_port":    iface.client_port,
+                "geo":            getattr(iface, "geo", {}),
+                "username":       iface.username,
+                "password":       iface.password,
+                "client_version": iface._client_version,
+                "session_id":     iface.session_id,
+            }
+            log_event("ssh", ev)
+            notify("ssh", ev)
+
         channel = transport.accept(30)
         if channel is None:
             return
@@ -210,6 +217,8 @@ def main() -> None:
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=2222)
     args = parser.parse_args()
+
+    validate_webhook()
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
