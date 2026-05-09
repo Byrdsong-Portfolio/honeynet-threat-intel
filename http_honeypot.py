@@ -20,12 +20,15 @@ import sys
 import uuid
 from pathlib import Path
 
+from dotenv import load_dotenv
 from flask import Flask, Response, redirect, request, send_file
+
+load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).parent))
 from utils.logger import log_event
 from utils.geoip import resolve
-from utils.alerting import notify
+from utils.alerting import notify, validate_webhook
 
 app = Flask(__name__)
 app.config["SERVER_NAME"] = None  # allow any host header
@@ -265,6 +268,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8080)
     args = parser.parse_args()
 
+    validate_webhook()
     print(f"[http] Listening on {args.host}:{args.port}")
     app.run(host=args.host, port=args.port, debug=False, threaded=True)
 

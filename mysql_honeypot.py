@@ -21,10 +21,14 @@ import threading
 import uuid
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 sys.path.insert(0, str(Path(__file__).parent))
 from utils.logger import log_event
 from utils.geoip import resolve
-from utils.alerting import notify
+from utils.alerting import notify, validate_webhook
 
 # ── MySQL wire protocol helpers ───────────────────────────────────────────────
 
@@ -236,6 +240,8 @@ def main() -> None:
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=3306)
     args = parser.parse_args()
+
+    validate_webhook()
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
